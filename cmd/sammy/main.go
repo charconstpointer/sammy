@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"strings"
 
 	"github.com/charconstpointer/sammy/github"
@@ -28,10 +30,10 @@ type App struct {
 	gpt *gpt3.Client
 }
 
-func NewApp(g github.Client, s gpt3.Client) *App {
+func NewApp(g *github.Client, s *gpt3.Client) *App {
 	return &App{
-		ghc: &g,
-		gpt: &s,
+		ghc: g,
+		gpt: s,
 	}
 }
 
@@ -61,9 +63,13 @@ func main() {
 
 	ghc := github.NewClient(config.GithubToken)
 	gpt := gpt3.NewClient(config.OpenAIToken, gpt3.DaVinci)
-	app := NewApp(*ghc, *gpt)
+	app := NewApp(ghc, gpt)
 
-	summary, err := app.SummarizeAcitivity(context.Background(), *githubUser)
+	ctx := context.Background()
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
+	defer cancel()
+
+	summary, err := app.SummarizeAcitivity(ctx, *githubUser)
 	if err != nil {
 		log.Fatalf("Failed to summarize: %v", err)
 	}
