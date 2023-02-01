@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/charconstpointer/sammy/github"
@@ -36,8 +35,8 @@ func NewApp(g github.Client, s gpt3.Client) *App {
 	}
 }
 
-func (a *App) SummarizeAcitivity(ctx context.Context) (string, error) {
-	ev, err := a.ghc.GetEvents(context.Background(), *githubUser)
+func (a *App) SummarizeAcitivity(ctx context.Context, user string) (string, error) {
+	ev, err := a.ghc.GetEvents(context.Background(), user)
 	if err != nil {
 		return "", fmt.Errorf("failed to get events: %w", err)
 	}
@@ -59,16 +58,12 @@ func (a *App) SummarizeAcitivity(ctx context.Context) (string, error) {
 func main() {
 	flag.Parse()
 	envconfig.MustProcess("", &config)
-	t := os.Getenv("GH_TOKEN")
-	if t == "" {
-		log.Fatal("GH_TOKEN env variable is not set")
-	}
 
-	ghc := github.NewClient(t)
+	ghc := github.NewClient(config.GithubToken)
 	gpt := gpt3.NewClient(config.OpenAIToken, gpt3.DaVinci)
 	app := NewApp(*ghc, *gpt)
 
-	summary, err := app.SummarizeAcitivity(context.Background())
+	summary, err := app.SummarizeAcitivity(context.Background(), *githubUser)
 	if err != nil {
 		log.Fatalf("Failed to summarize: %v", err)
 	}
