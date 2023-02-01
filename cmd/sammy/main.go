@@ -16,7 +16,7 @@ import (
 
 type Config struct {
 	OpenAIToken string `envconfig:"OPEN_AI_TOKEN" required:"true"`
-	GithubToken string `envconfig:"GH_TOKEN" required:"true"`
+	GithubToken string `envconfig:"GITHUB_TOKEN" required:"true"`
 }
 
 var (
