@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/PullRequestInc/go-gpt3"
 	"github.com/charconstpointer/sammy/github"
+	"github.com/charconstpointer/sammy/gpt3"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -20,12 +20,41 @@ type Config struct {
 
 var (
 	config     Config
-	sample     string
-	sampleSrc  = flag.String("sample", "sample.txt", "sample text file")
-	maxTokens  = flag.Int("max_tokens", 100, "max tokens")
-	temp       = flag.Float64("temp", 0.3, "temperature")
+	maxTokens  = flag.Int("max_tokens", 100, "max tokens cost")
 	githubUser = flag.String("user", "charconstpointer", "github user")
 )
+
+type App struct {
+	ghc *github.Client
+	gpt *gpt3.Client
+}
+
+func NewApp(g github.Client, s gpt3.Client) *App {
+	return &App{
+		ghc: &g,
+		gpt: &s,
+	}
+}
+
+func (a *App) SummarizeAcitivity(ctx context.Context) (string, error) {
+	ev, err := a.ghc.GetEvents(context.Background(), *githubUser)
+	if err != nil {
+		return "", fmt.Errorf("failed to get events: %w", err)
+	}
+
+	var sb strings.Builder
+	for _, e := range ev {
+		sb.WriteString(e.Body)
+	}
+
+	feed := sb.String()
+	summary, err := a.gpt.Summarize(context.Background(), feed, gpt3.WithMaxTokens(*maxTokens))
+	if err != nil {
+		return "", fmt.Errorf("failed to summarize: %w", err)
+	}
+
+	return summary, nil
+}
 
 func main() {
 	flag.Parse()
@@ -34,36 +63,14 @@ func main() {
 	if t == "" {
 		log.Fatal("GH_TOKEN env variable is not set")
 	}
-	c := github.NewClient(t)
-	ev, err := c.GetEvents(context.Background(), *githubUser)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var sb strings.Builder
-	for _, e := range ev {
-		sb.WriteString(e.Body)
-	}
-	feed := sb.String()
-	summary, err := summarize(context.Background(), feed)
+
+	ghc := github.NewClient(t)
+	gpt := gpt3.NewClient(config.OpenAIToken, gpt3.DaVinci)
+	app := NewApp(*ghc, *gpt)
+
+	summary, err := app.SummarizeAcitivity(context.Background())
 	if err != nil {
 		log.Fatalf("Failed to summarize: %v", err)
 	}
-	log.Printf("Summary: %s", summary)
-}
-
-func summarize(ctx context.Context, feed string) (string, error) {
-	prompt := fmt.Sprintf("Pick releveant information about repositories and actions made from the following text, keep in mind actions should be reporter in a human readable form: %s", feed)
-
-	c := gpt3.NewClient(config.OpenAIToken, gpt3.WithDefaultEngine("text-davinci-003"))
-	log.Printf("Requesting summary of: %s", prompt)
-	req := gpt3.CompletionRequest{
-		Prompt:    []string{prompt},
-		MaxTokens: maxTokens,
-		Echo:      false,
-	}
-	res, err := c.Completion(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("failed to get completion: %w", err)
-	}
-	return res.Choices[0].Text, nil
+	fmt.Println(summary)
 }
