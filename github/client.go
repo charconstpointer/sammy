@@ -3,7 +3,6 @@ package github
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/google/go-github/v50/github"
@@ -39,22 +38,13 @@ func NewEvent(subj, body string, tokens []string) Event {
 	}
 }
 
-func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*Event, error) {
-	ev, res, err := c.c.Activity.ListEventsPerformedByUser(ctx, user, false, &github.ListOptions{
-		PerPage: 500,
-		Page:    1,
-	})
+func (c *Client) UserEvents(ctx context.Context, user string, public bool, start, end time.Time) (events []*Event, err error) {
+	ev, err := c.githubEvents(ctx, user, public, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to get events: %s", res.Status)
-	}
-	var events []*Event
+
 	for _, e := range ev {
-		if e.Public == nil || *e.Public != public {
-			continue
-		}
 		var (
 			body   string
 			tokens []string
@@ -83,6 +73,32 @@ func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*Ev
 		event := NewEvent(e.GetActor().GetLogin(), body, tokens)
 		events = append(events, &event)
 	}
+	return events, nil
+}
+
+func (c *Client) githubEvents(ctx context.Context, user string, public bool, start, end time.Time) (events []*github.Event, err error) {
+	opt := &github.ListOptions{PerPage: 10}
+	for {
+		events, resp, err := c.c.Activity.ListEventsPerformedByUser(ctx, user, public, opt)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, event := range events {
+			if event.CreatedAt.After(end) {
+				return events, nil
+			}
+			if event.CreatedAt.After(start) && event.CreatedAt.Before(end) {
+				events = append(events, event)
+			}
+		}
+
+		if resp.NextPage == 0 {
+			break
+		}
+		opt.Page = resp.NextPage
+	}
+
 	return events, nil
 }
 

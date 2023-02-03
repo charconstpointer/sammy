@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/charconstpointer/sammy/github"
 	"github.com/charconstpointer/sammy/gpt3"
@@ -42,7 +43,7 @@ func NewApp(g *github.Client, s *gpt3.Client, masker *namesgenerator.Masker) *Ap
 }
 
 func (a *App) SummarizeAcitivity(ctx context.Context, user string, public bool) (string, error) {
-	ev, err := a.ghc.GetEvents(ctx, user, public)
+	ev, err := a.ghc.UserEvents(ctx, user, public, time.Now().Add(-time.Hour*1), time.Now())
 	if err != nil {
 		return "", fmt.Errorf("failed to get events: %w", err)
 	}
