@@ -9,8 +9,10 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/charconstpointer/sammy"
 	"github.com/charconstpointer/sammy/github"
 	"github.com/charconstpointer/sammy/gpt3"
+	"github.com/charconstpointer/sammy/namesgenerator"
 	"github.com/kelseyhightower/envconfig"
 )
 
@@ -27,14 +29,16 @@ var (
 )
 
 type App struct {
-	ghc *github.Client
-	gpt *gpt3.Client
+	ghc    *github.Client
+	gpt    *gpt3.Client
+	masker sammy.Masker
 }
 
-func NewApp(g *github.Client, s *gpt3.Client) *App {
+func NewApp(g *github.Client, s *gpt3.Client, masker sammy.Masker) *App {
 	return &App{
-		ghc: g,
-		gpt: s,
+		ghc:    g,
+		gpt:    s,
+		masker: masker,
 	}
 }
 
@@ -46,17 +50,20 @@ func (a *App) SummarizeAcitivity(ctx context.Context, user string, public bool) 
 
 	var sb strings.Builder
 	for _, e := range ev {
+		for _, t := range e.Tokens {
+			a.masker.Register(t)
+		}
 		sb.WriteString(e.Body)
 	}
 
 	feed := sb.String()
-	// summary, err := a.gpt.Summarize(context.Background(), feed, gpt3.WithMaxTokens(*maxTokens))
-	// if err != nil {
-	// 	return "", fmt.Errorf("failed to summarize: %w", err)
-	// }
+	feed = a.masker.MaskString(feed)
+	summary, err := a.gpt.Summarize(context.Background(), feed, gpt3.WithMaxTokens(*maxTokens))
+	if err != nil {
+		return "", fmt.Errorf("failed to summarize: %w", err)
+	}
 
-	// return summary, nil
-	return feed, nil
+	return a.masker.UnmaskString(summary), nil
 }
 
 func main() {
@@ -65,7 +72,8 @@ func main() {
 
 	ghc := github.NewClient(config.GithubToken)
 	gpt := gpt3.NewClient(config.OpenAIToken, gpt3.DaVinci)
-	app := NewApp(ghc, gpt)
+	masker := namesgenerator.NewMasker()
+	app := NewApp(ghc, gpt, masker)
 
 	ctx := context.Background()
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
