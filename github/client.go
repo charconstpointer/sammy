@@ -25,9 +25,9 @@ func NewClient(token string) *Client {
 	}
 }
 
-func (c *Client) GetEvents(ctx context.Context, user string) ([]*sammy.Event, error) {
+func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*sammy.Event, error) {
 	ev, res, err := c.c.Activity.ListEventsPerformedByUser(ctx, user, false, &github.ListOptions{
-		PerPage: 25,
+		PerPage: 500,
 		Page:    1,
 	})
 	if err != nil {
@@ -38,6 +38,9 @@ func (c *Client) GetEvents(ctx context.Context, user string) ([]*sammy.Event, er
 	}
 	var events []*sammy.Event
 	for _, e := range ev {
+		if e.Public == nil || *e.Public != public {
+			continue
+		}
 		p, err := e.ParsePayload()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse payload: %w", err)
@@ -47,15 +50,21 @@ func (c *Client) GetEvents(ctx context.Context, user string) ([]*sammy.Event, er
 		case "IssuesEvent":
 			body = c.handleIssue(ctx, p.(*github.IssuesEvent))
 		case "IssueCommentEvent":
-			body = c.handleIssueComment(ctx, p.(*github.IssueCommentEvent))
+			body = c.handleIssueComment(ctx, e)
 		case "PullRequestEvent":
-			body = c.handlePullRequest(ctx, p.(*github.PullRequestEvent))
+			body = c.handlePullRequest(ctx, e)
 		case "PullRequestReviewEvent":
-			body = c.handlePullRequestReview(ctx, p.(*github.PullRequestReviewEvent))
+			body = c.handlePullRequestReview(ctx, e)
 		case "PullRequestReviewCommentEvent":
-			body = c.handlePullRequestReviewComment(ctx, p.(*github.PullRequestReviewCommentEvent))
+			body = c.handlePullRequestReviewComment(ctx, e)
 		case "PushEvent":
-			body = c.handlePush(ctx, p.(*github.PushEvent))
+			body = c.handlePush(ctx, e)
+		case "WatchEvent":
+			body = c.handleWatch(ctx, e)
+		case "ForkEvent":
+			body = c.handleFork(ctx, e)
+		default:
+			body = fmt.Sprintf("unhandled event %s", *e.Type)
 		}
 		body = fmt.Sprintf("%s has %s\n", e.GetActor().GetLogin(), body)
 		event := sammy.NewEvent(e.GetActor().GetLogin(), body)
@@ -79,62 +88,39 @@ func (c *Client) handleIssue(ctx context.Context, e *github.IssuesEvent) string 
 	return fmt.Sprintf("created %s issue available at %s", issueTitle, issueURL)
 }
 
-func (c *Client) handleIssueComment(ctx context.Context, e *github.IssueCommentEvent) string {
-	var (
-		issueTitle = "an issue"
-	)
-
-	if e.Issue != nil {
-		issueTitle = *e.Issue.Title
-	}
-
-	return fmt.Sprintf("commented on an issue %s", issueTitle)
+func (c *Client) handleIssueComment(ctx context.Context, e *github.Event) string {
+	p := e.Payload()
+	ev := p.(*github.IssueCommentEvent)
+	return fmt.Sprintf("commented on an issue %s", *ev.Issue.Title)
 }
 
-func (c *Client) handlePullRequest(ctx context.Context, e *github.PullRequestEvent) string {
-	var (
-		pullRequestTitle, pullRequestURL = "a pull request", "a pull request"
-	)
-	if e.PullRequest != nil {
-		pullRequestTitle = *e.PullRequest.Title
-	}
-	if e.Repo != nil {
-		pullRequestURL = *e.Repo.PullsURL
-	}
+func (c *Client) handlePullRequest(ctx context.Context, e *github.Event) string {
+	p := e.Payload()
+	ev := p.(*github.PullRequestEvent)
 
-	return fmt.Sprintf("created a pull request %s avaiable at %s", pullRequestTitle, pullRequestURL)
+	return fmt.Sprintf("created a pull request %s avaiable at %s", *ev.PullRequest.Title, ev.PullRequest.GetHTMLURL())
 }
 
-func (c *Client) handlePullRequestReview(ctx context.Context, e *github.PullRequestReviewEvent) string {
-	var (
-		pullRequestTitle, pullRequestURL = "a pull request", "a pull request"
-	)
-	if e.PullRequest != nil {
-		pullRequestTitle = *e.PullRequest.Title
-	}
-	if e.Repo != nil {
-		pullRequestURL = *e.Repo.PullsURL
-	}
-
-	return fmt.Sprintf("created a pull request %s available at %s", pullRequestTitle, pullRequestURL)
+func (c *Client) handlePullRequestReview(ctx context.Context, e *github.Event) string {
+	p := e.Payload()
+	ev := p.(*github.PullRequestReviewEvent)
+	return fmt.Sprintf("created a pull request %s available at %s", *ev.PullRequest.Title, *ev.PullRequest.URL)
 }
 
-func (c *Client) handlePullRequestReviewComment(ctx context.Context, e *github.PullRequestReviewCommentEvent) string {
-	var (
-		pullRequestTitle = "a pull request"
-	)
-	if e.PullRequest != nil {
-		pullRequestTitle = *e.PullRequest.Title
-	}
-	return fmt.Sprintf("commented on a pull request %s", pullRequestTitle)
+func (c *Client) handlePullRequestReviewComment(ctx context.Context, e *github.Event) string {
+	p := e.Payload()
+	ev := p.(*github.PullRequestReviewCommentEvent)
+	return fmt.Sprintf("commented on a pull request %s", *ev.PullRequest.Title)
 }
 
-func (c *Client) handlePush(ctx context.Context, e *github.PushEvent) string {
-	var (
-		repoName = "a commit"
-	)
-	if e.Repo != nil {
-		repoName = *e.Repo.PullsURL
-	}
-	return fmt.Sprintf("pushed to %s", repoName)
+func (c *Client) handlePush(ctx context.Context, e *github.Event) string {
+	return fmt.Sprintf("pushed to %s", *e.Repo.Name)
+}
+
+func (c *Client) handleWatch(ctx context.Context, e *github.Event) string {
+	return fmt.Sprintf("starred the repo %s", *e.Repo.Name)
+}
+
+func (c *Client) handleFork(ctx context.Context, e *github.Event) string {
+	return fmt.Sprintf("forked the repo %s", *e.Repo.Name)
 }
