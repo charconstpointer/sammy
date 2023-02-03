@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
-	"github.com/charconstpointer/sammy"
 	"github.com/google/go-github/v50/github"
 	"golang.org/x/oauth2"
 )
@@ -25,7 +25,21 @@ func NewClient(token string) *Client {
 	}
 }
 
-func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*sammy.Event, error) {
+type Event struct {
+	CreatedAt time.Time
+	Body      string
+	Tokens    []string
+}
+
+func NewEvent(subj, body string, tokens []string) Event {
+	return Event{
+		CreatedAt: time.Now().UTC(),
+		Body:      body,
+		Tokens:    tokens,
+	}
+}
+
+func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*Event, error) {
 	ev, res, err := c.c.Activity.ListEventsPerformedByUser(ctx, user, false, &github.ListOptions{
 		PerPage: 500,
 		Page:    1,
@@ -36,7 +50,7 @@ func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*sa
 	if res.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to get events: %s", res.Status)
 	}
-	var events []*sammy.Event
+	var events []*Event
 	for _, e := range ev {
 		if e.Public == nil || *e.Public != public {
 			continue
@@ -66,7 +80,7 @@ func (c *Client) GetEvents(ctx context.Context, user string, public bool) ([]*sa
 			body, tokens = fmt.Sprintf("unhandled event %s", *e.Type), nil
 		}
 		body = fmt.Sprintf("%s has %s\n", e.GetActor().GetLogin(), body)
-		event := sammy.NewEvent(e.GetActor().GetLogin(), body, tokens)
+		event := NewEvent(e.GetActor().GetLogin(), body, tokens)
 		events = append(events, &event)
 	}
 	return events, nil

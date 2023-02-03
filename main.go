@@ -9,17 +9,11 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/charconstpointer/sammy"
 	"github.com/charconstpointer/sammy/github"
 	"github.com/charconstpointer/sammy/gpt3"
 	"github.com/charconstpointer/sammy/namesgenerator"
 	"github.com/kelseyhightower/envconfig"
 )
-
-type Config struct {
-	OpenAIToken string `envconfig:"OPEN_AI_TOKEN" required:"true"`
-	GithubToken string `envconfig:"GITHUB_TOKEN" required:"true"`
-}
 
 var (
 	config     Config
@@ -28,13 +22,18 @@ var (
 	public     = flag.Bool("public", true, "only public events")
 )
 
+type Config struct {
+	OpenAIToken string `envconfig:"OPEN_AI_TOKEN" required:"true"`
+	GithubToken string `envconfig:"GITHUB_TOKEN" required:"true"`
+}
+
 type App struct {
 	ghc    *github.Client
 	gpt    *gpt3.Client
-	masker sammy.Masker
+	masker *namesgenerator.Masker
 }
 
-func NewApp(g *github.Client, s *gpt3.Client, masker sammy.Masker) *App {
+func NewApp(g *github.Client, s *gpt3.Client, masker *namesgenerator.Masker) *App {
 	return &App{
 		ghc:    g,
 		gpt:    s,
@@ -58,7 +57,7 @@ func (a *App) SummarizeAcitivity(ctx context.Context, user string, public bool) 
 
 	feed := sb.String()
 	feed = a.masker.MaskString(feed)
-	summary, err := a.gpt.Summarize(context.Background(), feed, gpt3.WithMaxTokens(*maxTokens))
+	summary, err := a.gpt.Summarize(ctx, feed, gpt3.WithMaxTokens(*maxTokens))
 	if err != nil {
 		return "", fmt.Errorf("failed to summarize: %w", err)
 	}

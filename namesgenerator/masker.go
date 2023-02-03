@@ -10,8 +10,8 @@ type Masker struct {
 	mask map[string]string
 }
 
-func NewMasker() Masker {
-	return Masker{
+func NewMasker() *Masker {
+	return &Masker{
 		mask: make(map[string]string),
 	}
 }
