@@ -20,6 +20,8 @@ var (
 	maxTokens  = flag.Int("max_tokens", 100, "max tokens cost")
 	githubUser = flag.String("user", "charconstpointer", "github user")
 	public     = flag.Bool("public", true, "only public events")
+	from       = flag.String("from", "", "from date in format of RFC3339")
+	to         = flag.String("to", "", "to date in format of RFC3339")
 )
 
 type Config struct {
@@ -68,6 +70,22 @@ func (a *App) makeFeed(ev []*github.Event) string {
 	return a.masker.MaskString(sb.String())
 }
 
+func mustParseTimeRange(from, to string) (time.Time, time.Time) {
+	parseTime := func(x string) time.Time {
+		if x == "" {
+			return time.Now().UTC()
+		}
+
+		t, err := time.Parse(time.RFC3339, x)
+		if err != nil {
+			panic(err)
+		}
+		return t
+	}
+
+	return parseTime(from), parseTime(to)
+}
+
 func main() {
 	flag.Parse()
 	var c Config
@@ -84,7 +102,11 @@ func main() {
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt, os.Kill)
 	defer cancel()
 
-	from, to := time.Now().UTC().Add(-time.Hour*24), time.Now().UTC()
+	from, to := mustParseTimeRange(*from, *to)
+	if from.Equal(to) {
+		to.Add(time.Hour * 24)
+	}
+
 	summary, err := app.SummarizeAcitivity(ctx, *githubUser, *public, from, to)
 	if err != nil {
 		log.Fatalf("Failed to summarize: %v", err)
