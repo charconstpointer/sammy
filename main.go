@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -93,6 +94,9 @@ func main() {
 	flag.Parse()
 	var c Config
 	envconfig.MustProcess("", &c)
+	if !*verbose {
+		log.SetOutput(ioutil.Discard)
+	}
 
 	var (
 		ghc    = github.NewClient(c.GithubToken)
