@@ -76,20 +76,26 @@ func (c *Client) UserEvents(ctx context.Context, user string, public bool, start
 	return events, nil
 }
 
-func (c *Client) githubEvents(ctx context.Context, user string, public bool, start, end time.Time) (events []*github.Event, err error) {
-	opt := &github.ListOptions{PerPage: 10}
+func (c *Client) githubEvents(ctx context.Context, user string, public bool, start, end time.Time) ([]*github.Event, error) {
+	var (
+		opt            = &github.ListOptions{PerPage: 10}
+		filteredEvents []*github.Event
+	)
 	for {
 		events, resp, err := c.c.Activity.ListEventsPerformedByUser(ctx, user, public, opt)
 		if err != nil {
 			return nil, err
 		}
-
-		for _, event := range events {
+		for i := len(events) - 1; i >= 0; i-- {
+			event := events[i]
 			if event.CreatedAt.After(end) {
-				return events, nil
+				continue
+			}
+			if event.CreatedAt.Before(start) {
+				return filteredEvents, nil
 			}
 			if event.CreatedAt.After(start) && event.CreatedAt.Before(end) {
-				events = append(events, event)
+				filteredEvents = append(filteredEvents, event)
 			}
 		}
 
@@ -99,7 +105,7 @@ func (c *Client) githubEvents(ctx context.Context, user string, public bool, sta
 		opt.Page = resp.NextPage
 	}
 
-	return events, nil
+	return filteredEvents, nil
 }
 
 func (c *Client) handleIssue(ctx context.Context, e *github.Event) (string, []string) {

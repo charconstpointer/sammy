@@ -17,11 +17,12 @@ import (
 )
 
 var (
-	maxTokens  = flag.Int("max_tokens", 100, "max tokens cost")
+	maxTokens  = flag.Int("max_tokens", 200, "max tokens cost")
 	githubUser = flag.String("user", "charconstpointer", "github user")
-	public     = flag.Bool("public", true, "only public events")
+	public     = flag.Bool("public", false, "only public events")
 	from       = flag.String("from", "", "from date in format of RFC3339")
 	to         = flag.String("to", "", "to date in format of RFC3339")
+	verbose    = flag.Bool("verbose", false, "verbose logging")
 )
 
 type Config struct {
@@ -59,10 +60,12 @@ func (a *App) SummarizeAcitivity(ctx context.Context, user string, public bool, 
 }
 
 func (a *App) makeFeed(ev []*github.Event) string {
+	log.Printf("Making feed from %d events", len(ev))
 	var sb strings.Builder
 	for _, e := range ev {
+		log.Printf("Masking event: %s", e.Body)
 		for _, t := range e.Tokens {
-			a.masker.MustAdd(t)
+			_ = a.masker.Add(t)
 		}
 		sb.WriteString(e.Body)
 	}
@@ -106,7 +109,7 @@ func main() {
 	if from.Equal(to) {
 		to.Add(time.Hour * 24)
 	}
-
+	log.Printf("Generating report for date range from %s to %s", from, to)
 	summary, err := app.SummarizeAcitivity(ctx, *githubUser, *public, from, to)
 	if err != nil {
 		log.Fatalf("Failed to summarize: %v", err)
